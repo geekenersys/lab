@@ -11,13 +11,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v2"
+	jwtware "github.com/gofiber/jwt/v3"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"github.com/howeyc/crc16"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-
-	jwtware "github.com/gofiber/jwt/v3"
-	"github.com/golang-jwt/jwt/v4"
 )
 
 // QRRequest structure
@@ -105,6 +104,7 @@ func GetQRRequest(db *gorm.DB, id string) (*QRRequest, error) {
 
 // ... additional CRUD functions for Update and Delete ...
 
+// Route handlers
 func createQRRequestHandler(db *gorm.DB) func(*fiber.Ctx) error {
 	return func(c *fiber.Ctx) error {
 		qr := new(QRRequest)
@@ -237,7 +237,9 @@ func closeDatabaseConnection(db *gorm.DB) {
 
 func setupRoutes(app *fiber.App, db *gorm.DB, handler *Handler) {
 	// Existing routes...
-	app.Post("/generateqr", jwtware.New(jwtware.Config{SigningKey: jwtSecretKey}), handler.generateQR)
+	//app.Post("/generateqr", jwtware.New(jwtware.Config{SigningKey: jwtSecretKey}), handler.generateQR)
+	//app.Post("/generateqr", createQRRequestHandler(db))
+	app.Post("/generateqr", jwtware.New(jwtware.Config{SigningKey: jwtSecretKey}), createQRRequestHandler(db))
 	// ...
 
 	// Route to set up the database schema

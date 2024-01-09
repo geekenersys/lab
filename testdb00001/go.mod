@@ -1,4 +1,4 @@
-module testdb
+module testdb00001
 
 go 1.21.5
 
