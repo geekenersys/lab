@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  vnc:
+    build: .
+    ports:
+      - "5900:5900"
+      - "5901:5901"
+      - "8081:8081"
+    environment:
+      - VNC_PASSWD=yourpassword
+    container_name: robovncx
+    volumes:
+      - ./shared:/shared

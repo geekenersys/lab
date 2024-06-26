@@ -1,0 +1,19 @@
+=> ERROR [vnc 13/19] COPY --chown=dockerUser:users container_startup.sh /opt/container_st  0.0s 
+ => ERROR [vnc 14/19] COPY --chown=dockerUser:users x11vnc_entrypoint.sh /opt/x11vnc_entry  0.0s
+
+ docker build -t robovncx:latest -f Dockerfile .
+
+ docker exec -it robovncx /bin/bash
+
+
+ docker-compose build --no-cache
+
+ sudo snap install chromium
+
+
+
+docker-compose up --build
+
+docker-compose build --no-cache
+
+docker exec -it robovncx /bin/bash

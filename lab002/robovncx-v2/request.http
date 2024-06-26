@@ -1,0 +1,22 @@
+GET http://localhost:8081/
+
+### เปิด Chromium ในโหมดเต็มจอ
+POST http://localhost:8081/command?cmd=open_chrome
+
+### ย้ายเมาส์ไปที่ตำแหน่ง (500, 400)
+POST http://localhost:8081/command?cmd=move_mouse&x=500&y=400
+
+### คลิกเมาส์ซ้าย
+POST http://localhost:8081/command?cmd=click_mouse&button=left
+
+### คลิกเมาส์ขวา
+POST http://localhost:8081/command?cmd=click_mouse&button=right
+
+### ดับเบิ้ลคลิกเมาส์ซ้าย
+POST http://localhost:8081/command?cmd=double_click_mouse&button=left
+
+### ถ่ายภาพหน้าจอเต็มจอ
+POST http://localhost:8081/command?cmd=take_screenshot&type=fullscreen
+
+### ถ่ายภาพหน้าจอรอบๆ เมาส์
+POST http://localhost:8081/command?cmd=take_screenshot&type=mouse

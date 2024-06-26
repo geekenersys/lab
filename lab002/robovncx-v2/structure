@@ -1,0 +1,17 @@
+robovncx/
+├── build.sh                     # Script to build the Docker image.
+├── container_startup.sh         # Script to start the container services (VNC server, noVNC web server, fluxbox window manager, and Go HTTP server).
+├── Dockerfile                   # Instructions for building the Docker image.
+├── docker-compose.yml           # Configuration for Docker Compose to manage multi-container applications.
+├── list.bat                     # Batch script to display the directory structure and file contents (Windows).
+├── main.go                      # Main Go application that handles HTTP requests and performs various operations using RobotGo.
+├── note                         # Notes or errors related to Docker build process (specific to the developer).
+├── request.http                 # HTTP request samples for testing the Go application endpoints.
+├── structure                    # Directory structure information (for documentation).
+├── x11vnc_entrypoint.sh         # Entrypoint script for x11vnc, used to start the VNC service.
+├── .github/
+│   └── workflows/
+│       └── docker-publish.yml  # GitHub Actions workflow for publishing Docker images.
+└── shared/
+    └── screenshot_1719258857.png # Example screenshot file (output of the application).
+
