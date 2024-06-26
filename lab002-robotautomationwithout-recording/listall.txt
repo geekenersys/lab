@@ -1,0 +1,773 @@
+Directory structure:
+Folder PATH listing for volume x
+Volume serial number is 7622-011D
+C:.
+�   build.sh
+�   container_startup.sh
+�   docker-compose.yml
+�   Dockerfile
+�   list.bat
+�   listall.txt
+�   main.go
+�   note
+�   request.http
+�   structure
+�   x11vnc_entrypoint.sh
+�   
++---.github
+�   +---workflows
+�           docker-publish.yml
+�           
++---shared
+
+==========================================
+Displaying contents of each file
+==========================================
+
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\build.sh
+---------------------
+#!/bin/bash
+docker build -t robovncx:latest -f Dockerfile .
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\container_startup.sh
+---------------------
+#!/bin/bash
+OUR_IP=$(hostname -i)
+
+# start VNC server (Uses VNC_PASSWD Docker ENV variable)
+mkdir -p $HOME/.vnc && echo "$VNC_PASSWD" | vncpasswd -f > $HOME/.vnc/passwd
+# Remove potential lock files created from a previously stopped session
+rm -rf /tmp/.X*
+echo "Starting VNC server"
+vncserver :0 -localhost no -nolisten -rfbauth $HOME/.vnc/passwd -xstartup /opt/x11vnc_entrypoint.sh &
+
+echo "Starting noVNC web server"
+/opt/noVNC/utils/novnc_proxy --vnc localhost:5900 --listen 5901 &
+
+echo "Starting fluxbox window manager"
+/usr/bin/fluxbox &
+
+echo "Starting Golang HTTP server"
+/home/dockerUser/app &
+
+echo -e "\n\n------------------ VNC environment started ------------------"
+echo -e "\nVNCSERVER started on DISPLAY= $DISPLAY \n\t=> connect via VNC viewer with $OUR_IP:5900"
+echo -e "\nnoVNC HTML client started:\n\t=> connect via http://$OUR_IP:5901/?password=$VNC_PASSWD\n"
+echo -e "\nGolang HTTP server started:\n\t=> connect via http://$OUR_IP:8081\n"
+
+if [ -z "$1" ]; then
+  tail -f /dev/null
+else
+  # unknown option ==> call command
+  echo -e "\n\n------------------ EXECUTE COMMAND ------------------"
+  echo "Executing command: '$@'"
+  exec $@
+fi
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\docker-compose.yml
+---------------------
+version: '3.8'
+
+services:
+  vnc:
+    build: .
+    ports:
+      - "5900:5900"
+      - "5901:5901"
+      - "8081:8081"
+    environment:
+      - VNC_PASSWD=yourpassword
+    container_name: robovncx
+    volumes:
+      - ./shared:/shared
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\Dockerfile
+---------------------
+FROM ubuntu:24.04
+# FROM ubuntu:22.04
+
+# for the VNC connection
+EXPOSE 5900
+# for the browser VNC client
+EXPOSE 5901
+# for the HTTP server
+EXPOSE 8080
+
+# Use environment variable to allow custom VNC passwords
+ENV VNC_PASSWD=123456
+
+# Make sure the dependencies are met
+ENV APT_INSTALL_PRE="apt -o Acquire::ForceIPv4=true update && DEBIAN_FRONTEND=noninteractive apt -o Acquire::ForceIPv4=true install -y --no-install-recommends"
+ENV APT_INSTALL_POST="&& apt clean -y && rm -rf /var/lib/apt/lists/*"
+RUN eval ${APT_INSTALL_PRE} tigervnc-standalone-server tigervnc-common tigervnc-tools fluxbox eterm xterm git net-tools python3 python3-numpy ca-certificates scrot libx11-dev libxtst-dev libxinerama-dev libxrandr-dev libxcursor-dev ${APT_INSTALL_POST}
+
+# Install VNC. Requires net-tools, python and python-numpy
+RUN git clone --branch v1.4.0 --single-branch https://github.com/novnc/noVNC.git /opt/noVNC
+RUN git clone --branch v0.11.0 --single-branch https://github.com/novnc/websockify.git /opt/noVNC/utils/websockify
+RUN ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
+
+# Install Go
+RUN apt-get update && apt-get install -y golang-go
+
+
+RUN go version
+
+# Add menu entries to the container
+RUN echo "?package(bash):needs=\"X11\" section=\"DockerCustom\" title=\"Xterm\" command=\"xterm -ls -bg black -fg white\"" >> /usr/share/menu/custom-docker && update-menus
+
+# Set timezone to UTC
+RUN ln -snf /usr/share/zoneinfo/UTC /etc/localtime && echo UTC > /etc/timezone
+
+# Add in a health status
+HEALTHCHECK --start-period=10s CMD bash -c "if [ \"`pidof -x Xtigervnc | wc -l`\" == '1' ]; then exit 0; else exit 1; fi"
+
+# Add in non-root user
+ENV UID_OF_DOCKERUSER 1001
+RUN useradd -m -s /bin/bash -g users -u ${UID_OF_DOCKERUSER} dockerUser
+RUN chown -R dockerUser:users /home/dockerUser && chown dockerUser:users /opt
+
+# Create shared directory for screenshots and set permissions
+RUN mkdir -p /shared && chmod -R 777 /shared
+
+USER dockerUser
+
+# Copy various files to their respective places
+COPY --chown=dockerUser:users container_startup.sh /opt/container_startup.sh
+COPY --chown=dockerUser:users x11vnc_entrypoint.sh /opt/x11vnc_entrypoint.sh
+COPY --chown=dockerUser:users main.go /home/dockerUser/main.go
+
+# Initialize Go modules
+WORKDIR /home/dockerUser
+RUN go mod init robovncx
+RUN go get github.com/go-vgo/robotgo
+
+# Set DISPLAY environment variable
+ENV DISPLAY :0
+
+# Build the Go application
+RUN go build -o app main.go
+
+ENTRYPOINT ["/opt/container_startup.sh"]
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\list.bat
+---------------------
+@echo off
+setlocal enabledelayedexpansion
+
+:: Display the directory structure
+echo Directory structure:
+@REM tree /F
+tree /F
+echo.
+
+echo ==========================================
+echo Displaying contents of each file
+echo ==========================================
+echo.
+
+:: Loop through each file in the directory and subdirectories
+for /r %%f in (*) do (
+    :: Skip files in the venv directory and exclude .txt, .bat, .jpg, .vec, .svm files
+    echo %%f | findstr /I /C:"venv" >nul
+    if errorlevel 1 (
+        echo %%f | findstr /I /E /C:".txt" /C:".bat" /C:".jpg" /C:".vec" /C:".svm" >nul
+        if errorlevel 1 (
+            :: Check if the file has content
+            if exist "%%f" (
+                echo.
+                echo File: %%f
+                echo ---------------------
+                :: Display the content of the file, excluding .jpg, .vec, .svm files
+                if not "%%~xf"==".jpg" if not "%%~xf"==".vec" if not "%%~xf"==".svm" (
+                    type "%%f"
+                )
+                echo.
+                echo ==========================================
+            )
+        )
+    )
+)
+
+endlocal
+pause
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\listall.txt
+---------------------
+Directory structure:
+Folder PATH listing for volume x
+Volume serial number is 7622-011D
+C:.
+�   build.sh
+�   container_startup.sh
+�   docker-compose.yml
+�   Dockerfile
+�   list.bat
+�   listall.txt
+�   main.go
+�   note
+�   request.http
+�   structure
+�   x11vnc_entrypoint.sh
+�   
++---.github
+�   +---workflows
+�           docker-publish.yml
+�           
++---shared
+
+==========================================
+Displaying contents of each file
+==========================================
+
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\build.sh
+---------------------
+#!/bin/bash
+docker build -t robovncx:latest -f Dockerfile .
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\container_startup.sh
+---------------------
+#!/bin/bash
+OUR_IP=$(hostname -i)
+
+# start VNC server (Uses VNC_PASSWD Docker ENV variable)
+mkdir -p $HOME/.vnc && echo "$VNC_PASSWD" | vncpasswd -f > $HOME/.vnc/passwd
+# Remove potential lock files created from a previously stopped session
+rm -rf /tmp/.X*
+echo "Starting VNC server"
+vncserver :0 -localhost no -nolisten -rfbauth $HOME/.vnc/passwd -xstartup /opt/x11vnc_entrypoint.sh &
+
+echo "Starting noVNC web server"
+/opt/noVNC/utils/novnc_proxy --vnc localhost:5900 --listen 5901 &
+
+echo "Starting fluxbox window manager"
+/usr/bin/fluxbox &
+
+echo "Starting Golang HTTP server"
+/home/dockerUser/app &
+
+echo -e "\n\n------------------ VNC environment started ------------------"
+echo -e "\nVNCSERVER started on DISPLAY= $DISPLAY \n\t=> connect via VNC viewer with $OUR_IP:5900"
+echo -e "\nnoVNC HTML client started:\n\t=> connect via http://$OUR_IP:5901/?password=$VNC_PASSWD\n"
+echo -e "\nGolang HTTP server started:\n\t=> connect via http://$OUR_IP:8081\n"
+
+if [ -z "$1" ]; then
+  tail -f /dev/null
+else
+  # unknown option ==> call command
+  echo -e "\n\n------------------ EXECUTE COMMAND ------------------"
+  echo "Executing command: '$@'"
+  exec $@
+fi
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\docker-compose.yml
+---------------------
+version: '3.8'
+
+services:
+  vnc:
+    build: .
+    ports:
+      - "5900:5900"
+      - "5901:5901"
+      - "8081:8081"
+    environment:
+      - VNC_PASSWD=yourpassword
+    container_name: robovncx
+    volumes:
+      - ./shared:/shared
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\Dockerfile
+---------------------
+FROM ubuntu:24.04
+# FROM ubuntu:22.04
+
+# for the VNC connection
+EXPOSE 5900
+# for the browser VNC client
+EXPOSE 5901
+# for the HTTP server
+EXPOSE 8080
+
+# Use environment variable to allow custom VNC passwords
+ENV VNC_PASSWD=123456
+
+# Make sure the dependencies are met
+ENV APT_INSTALL_PRE="apt -o Acquire::ForceIPv4=true update && DEBIAN_FRONTEND=noninteractive apt -o Acquire::ForceIPv4=true install -y --no-install-recommends"
+ENV APT_INSTALL_POST="&& apt clean -y && rm -rf /var/lib/apt/lists/*"
+RUN eval ${APT_INSTALL_PRE} tigervnc-standalone-server tigervnc-common tigervnc-tools fluxbox eterm xterm git net-tools python3 python3-numpy ca-certificates scrot libx11-dev libxtst-dev libxinerama-dev libxrandr-dev libxcursor-dev ${APT_INSTALL_POST}
+
+# Install VNC. Requires net-tools, python and python-numpy
+RUN git clone --branch v1.4.0 --single-branch https://github.com/novnc/noVNC.git /opt/noVNC
+RUN git clone --branch v0.11.0 --single-branch https://github.com/novnc/websockify.git /opt/noVNC/utils/websockify
+RUN ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
+
+# Install Go
+RUN apt-get update && apt-get install -y golang-go
+
+
+RUN go version
+
+# Add menu entries to the container
+RUN echo "?package(bash):needs=\"X11\" section=\"DockerCustom\" title=\"Xterm\" command=\"xterm -ls -bg black -fg white\"" >> /usr/share/menu/custom-docker && update-menus
+
+# Set timezone to UTC
+RUN ln -snf /usr/share/zoneinfo/UTC /etc/localtime && echo UTC > /etc/timezone
+
+# Add in a health status
+HEALTHCHECK --start-period=10s CMD bash -c "if [ \"`pidof -x Xtigervnc | wc -l`\" == '1' ]; then exit 0; else exit 1; fi"
+
+# Add in non-root user
+ENV UID_OF_DOCKERUSER 1001
+RUN useradd -m -s /bin/bash -g users -u ${UID_OF_DOCKERUSER} dockerUser
+RUN chown -R dockerUser:users /home/dockerUser && chown dockerUser:users /opt
+
+# Create shared directory for screenshots and set permissions
+RUN mkdir -p /shared && chmod -R 777 /shared
+
+USER dockerUser
+
+# Copy various files to their respective places
+COPY --chown=dockerUser:users container_startup.sh /opt/container_startup.sh
+COPY --chown=dockerUser:users x11vnc_entrypoint.sh /opt/x11vnc_entrypoint.sh
+COPY --chown=dockerUser:users main.go /home/dockerUser/main.go
+
+# Initialize Go modules
+WORKDIR /home/dockerUser
+RUN go mod init robovncx
+RUN go get github.com/go-vgo/robotgo
+
+# Set DISPLAY environment variable
+ENV DISPLAY :0
+
+# Build the Go application
+RUN go build -o app main.go
+
+ENTRYPOINT ["/opt/container_startup.sh"]
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\list.bat
+---------------------
+@echo off
+setlocal enabledelayedexpansion
+
+:: Display the directory structure
+echo Directory structure:
+@REM tree /F
+tree /F
+echo.
+
+echo ==========================================
+echo Displaying contents of each file
+echo ==========================================
+echo.
+
+:: Loop through each file in the directory and subdirectories
+for /r %%f in (*) do (
+    :: Skip files in the venv directory and exclude .txt, .bat, .jpg, .vec, .svm files
+    echo %%f | findstr /I /C:"venv" >nul
+    if errorlevel 1 (
+        echo %%f | findstr /I /E /C:".txt" /C:".bat" /C:".jpg" /C:".vec" /C:".svm" >nul
+        if errorlevel 1 (
+            :: Check if the file has content
+            if exist "%%f" (
+                echo.
+                echo File: %%f
+                echo ---------------------
+                :: Display the content of the file, excluding .jpg, .vec, .svm files
+                if not "%%~xf"==".jpg" if not "%%~xf"==".vec" if not "%%~xf"==".svm" (
+                    type "%%f"
+                )
+                echo.
+                echo ==========================================
+            )
+        )
+    )
+)
+
+endlocal
+pause
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\listall.txt
+---------------------
+Directory structure:
+Folder PATH listing for volume x
+Volume serial number is 7622-011D
+C:.
+�   build.sh
+�   container_startup.sh
+�   dock
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\main.go
+---------------------
+package main
+
+import (
+	"fmt"
+	"image"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"time"
+
+	"github.com/go-vgo/robotgo"
+)
+
+// New function for bitmap operations
+func bitmap() {
+	bit := robotgo.CaptureScreen()
+	defer robotgo.FreeBitmap(bit)
+	fmt.Println("abitMap...", bit)
+
+	gbit := robotgo.ToBitmap(bit)
+	fmt.Println("bitmap...", gbit.Width)
+
+	gbitMap := robotgo.CaptureGo()
+	fmt.Println("Go CaptureScreen...", gbitMap.Width)
+
+	// img := robotgo.CaptureImg()
+	img := robotgo.CaptureImg(0, 0, 1920, 1080)
+	robotgo.SavePng(img, "save.png")
+
+	num := robotgo.DisplaysNum()
+	for i := 0; i < num; i++ {
+		robotgo.DisplayID = i
+		img1 := robotgo.CaptureImg()
+		path1 := "save_" + strconv.Itoa(i)
+		robotgo.SavePng(img1, path1+".png")
+		robotgo.SaveJpeg(img1, path1+".jpeg", 50)
+
+		img2 := robotgo.CaptureImg(10, 10, 20, 20)
+		path2 := "test_" + strconv.Itoa(i)
+		robotgo.SavePng(img2, path2+".png")
+		robotgo.SaveJpeg(img2, path2+".jpeg", 50)
+	}
+}
+
+// New function for color operations
+func color() {
+	color := robotgo.GetPixelColor(100, 200)
+	fmt.Println("color----", color, "-----------------")
+
+	clo := robotgo.GetPxColor(100, 200)
+	fmt.Println("color...", clo)
+	clostr := robotgo.PadHex(clo)
+	fmt.Println("color...", clostr)
+
+	rgb := robotgo.RgbToHex(255, 100, 200)
+	rgbstr := robotgo.PadHex(robotgo.U32ToHex(rgb))
+	fmt.Println("rgb...", rgbstr)
+
+	hex := robotgo.HexToRgb(uint32(rgb))
+	fmt.Println("hex...", hex)
+	hexh := robotgo.PadHex(robotgo.U8ToHex(hex))
+	fmt.Println("HexToRgb...", hexh)
+
+	color2 := robotgo.GetPixelColor(10, 20)
+	fmt.Println("color---", color2)
+}
+
+// New function for screen operations
+func screen() {
+	bitmap()
+
+	sx, sy := robotgo.GetScreenSize()
+	fmt.Println("get screen size: ", sx, sy)
+	for i := 0; i < robotgo.DisplaysNum(); i++ {
+		s1 := robotgo.ScaleF(i)
+		fmt.Println("ScaleF: ", s1)
+	}
+	sx, sy = robotgo.GetScaleSize()
+	fmt.Println("get screen scale size: ", sx, sy)
+
+	color()
+}
+
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
+			return ipNet.IP.String()
+		}
+	}
+
+	return "Unable to get IP"
+}
+
+func handleRoot(w http.ResponseWriter, r *http.Request) {
+	ip := getLocalIP()
+	fmt.Fprintf(w, "RobotGo HTTP Server. Container IP: %s", ip)
+}
+
+func handleCommand(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	command := r.URL.Query().Get("cmd")
+	if command == "" {
+		http.Error(w, "cmd parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Received command: %s", command)
+
+	switch command {
+	case "open_chrome":
+		go func() {
+			err := exec.Command("chromium-browser", "--start-fullscreen").Start()
+			if err != nil {
+				log.Printf("Failed to open Chromium: %v", err)
+			}
+		}()
+		fmt.Fprintf(w, "Opening Chromium in fullscreen mode")
+	case "move_mouse":
+		x := r.URL.Query().Get("x")
+		y := r.URL.Query().Get("y")
+		if x == "" || y == "" {
+			http.Error(w, "x and y parameters are required", http.StatusBadRequest)
+			return
+		}
+		fmt.Printf("Moving mouse to (%s, %s)\n", x, y)
+		robotgo.MoveMouse(atoi(x), atoi(y))
+		fmt.Fprintf(w, "Mouse moved to (%s, %s)", x, y)
+	case "click_mouse":
+		fmt.Println("Clicking mouse")
+		robotgo.MouseClick("left")
+		fmt.Fprintf(w, "Mouse clicked")
+	case "take_screenshot":
+		var sharedDir string
+		if runtime.GOOS == "windows" {
+			sharedDir = filepath.Join(".", "shared")
+		} else {
+			sharedDir = "/shared"
+		}
+		log.Printf("Creating shared directory: %s", sharedDir)
+		err := os.MkdirAll(sharedDir, 0777)
+		if err != nil {
+			log.Printf("Failed to create directory: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to create directory: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		screenshotType := r.URL.Query().Get("type")
+		if screenshotType == "" {
+			http.Error(w, "type parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		fileName := fmt.Sprintf("%s/screenshot_%d.png", sharedDir, time.Now().Unix())
+		log.Printf("Screenshot will be saved to: %s", fileName)
+
+		var img image.Image
+
+		if screenshotType == "fullscreen" {
+			sx, sy := robotgo.GetScreenSize()
+			fmt.Printf("Screen Size: %dx%d\n", sx, sy)
+			log.Println("Capturing full screen image")
+			img = robotgo.CaptureImg(0, 0, sx, sy)
+		} else if screenshotType == "mouse" {
+			x, y := robotgo.GetMousePos()
+			width, height := 300, 200 // Specify the size around the mouse pointer
+			fmt.Printf("Capturing image around mouse at (%d, %d)\n", x, y)
+			log.Println("Capturing image around mouse pointer")
+			img = robotgo.CaptureImg(x-int(width/2), y-int(height/2), width, height)
+		} else {
+			http.Error(w, "Invalid type parameter", http.StatusBadRequest)
+			return
+		}
+
+		// Save the captured screen to a file
+		log.Println("Saving screenshot")
+		err = robotgo.Save(img, fileName)
+		if err != nil {
+			log.Printf("Failed to save screenshot: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to save screenshot: %v", err), http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(w, "Screenshot taken and saved to %s", fileName)
+	default:
+		http.Error(w, "Unknown command", http.StatusBadRequest)
+	}
+}
+
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
+func main() {
+	http.HandleFunc("/", handleRoot)
+	http.HandleFunc("/command", handleCommand)
+	ip := getLocalIP()
+	fmt.Printf("Starting server on :8081. Container IP: %s\n", ip)
+	log.Fatal(http.ListenAndServe(":8081", nil))
+}
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\note
+---------------------
+=> ERROR [vnc 13/19] COPY --chown=dockerUser:users container_startup.sh /opt/container_st  0.0s 
+ => ERROR [vnc 14/19] COPY --chown=dockerUser:users x11vnc_entrypoint.sh /opt/x11vnc_entry  0.0s
+
+ docker build -t robovncx:latest -f Dockerfile .
+
+ docker exec -it robovncx /bin/bash
+
+
+ docker-compose build --no-cache
+
+ sudo snap install chromium
+
+
+
+ docker-compose up --build
+
+ docker exec -it robovncx /bin/bash
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\request.http
+---------------------
+### ตรวจสอบว่ารันเซิร์ฟเวอร์อยู่หรือไม่
+GET http://localhost:8081/
+
+### เปิด Chromium ในโหมดเต็มจอ
+POST http://localhost:8081/command?cmd=open_chrome
+
+### ย้ายเมาส์ไปที่ตำแหน่ง (500, 400)
+POST http://localhost:8081/command?cmd=move_mouse&x=500&y=400
+
+### คลิกเมาส์
+POST http://localhost:8081/command?cmd=click_mouse
+
+### ถ่ายภาพหน้าจอเต็มจอ
+POST http://localhost:8081/command?cmd=take_screenshot&type=fullscreen
+
+### ถ่ายภาพหน้าจอรอบๆ เมาส์ (ยัง bugs ถ้าเลื่อนไปข้างๆ เกิน limit ค่อยแก้)
+POST http://localhost:8081/command?cmd=take_screenshot&type=mouse
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\structure
+---------------------
+robovncx/
+├── build.sh                     # Script to build the Docker image.
+├── container_startup.sh         # Script to start the container services (VNC server, noVNC web server, fluxbox window manager, and Go HTTP server).
+├── Dockerfile                   # Instructions for building the Docker image.
+├── docker-compose.yml           # Configuration for Docker Compose to manage multi-container applications.
+├── list.bat                     # Batch script to display the directory structure and file contents (Windows).
+├── main.go                      # Main Go application that handles HTTP requests and performs various operations using RobotGo.
+├── note                         # Notes or errors related to Docker build process (specific to the developer).
+├── request.http                 # HTTP request samples for testing the Go application endpoints.
+├── structure                    # Directory structure information (for documentation).
+├── x11vnc_entrypoint.sh         # Entrypoint script for x11vnc, used to start the VNC service.
+├── .github/
+│   └── workflows/
+│       └── docker-publish.yml  # GitHub Actions workflow for publishing Docker images.
+└── shared/
+    └── screenshot_1719258857.png # Example screenshot file (output of the application).
+
+
+==========================================
+
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\x11vnc_entrypoint.sh
+---------------------
+# fix for clipboard being passed through
+vncconfig -nowin &
+
+if ls /opt/startup_scripts/*.sh 1> /dev/null 2>&1; then
+  for f in /opt/startup_scripts/*.sh; do
+    bash "$f" -H || (echo "Error with $f: $?" >> /var/log/x11vnc_entrypoint.log)
+  done
+fi
+/usr/bin/fluxbox
+
+==========================================
+.
+File: C:\Users\zvx\OneDrive\Desktop\robovncx-v2 - Copy (4)\.github\workflows\docker-publish.yml
+---------------------
+name: Multi-Arch Docker
+
+on:
+  push:
+    # Publish `master` as Docker `latest` image.
+    branches:
+      - master
+
+    # Publish `v1.2.3` tags as releases.
+    tags:
+      - v*
+
+  # Run tests for any PRs.
+  pull_request:
+
+jobs:
+  # Push image to GitHub Packages.
+  # See also https://docs.docker.com/docker-hub/builds/
+  push:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v2
+      - name: install buildx
+        id: buildx
+        uses: crazy-max/ghaction-docker-buildx@v1
+        with:
+          version: latest
+      - name: login to docker hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: build the image
+        run: |
+          IMAGE_ID=${{ github.repository }}
+
+          # Change all uppercase to lowercase
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+
+          # Strip git ref prefix from version
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+
+          # Strip "v" prefix from tag name
+          [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
+
+          # Use Docker `latest` tag convention
+          [ "$VERSION" == "master" ] && VERSION=latest
+
+          echo IMAGE_ID=$IMAGE_ID
+          echo VERSION=$VERSION
+          docker buildx build --push --tag $IMAGE_ID:$VERSION --platform linux/amd64,linux/arm/v7,linux/arm64 .
+.
+==========================================
+Press any key to continue . . . 
